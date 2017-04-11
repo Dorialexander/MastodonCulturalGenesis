@@ -7,9 +7,19 @@ date: '2017-04-11'
 output:
   html_notebook: default
   html_document: default
+  pdf_document: default
 ---
 ><div style="text-align: right">"*This allows places with different rules to coexist*" --- Eugen Rochko, [Learning from Twitter's Mistake](https://medium.com/@Gargron/learning-from-twitters-mistakes-c272d67bba76)</div>
 ><div style="text-align: right">"*Folklore was self-generating*" --- China Melville, *Kraken*</div>
+
+```{r include = FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(stringr)
+mastodon <- tbl_df(read_csv2("mastodon_interactions.csv"))
+```
+
 
 [Mastodon](http://rmarkdown.rstudio.com) is the latest offspring of a complex and fascinating lineage of free and decentralized social networks. While Facebook, Google and Twitter attempted to build large commercial empire on the trading of social interaction, free software projects did not remain inactive: [GNU Social](https://gnu.io/social/), Identi.ca, Diaspora, Friendica.
 
@@ -27,7 +37,7 @@ And it is not a new process on the web. Large scale projects, such as Wikipedia 
 
 Although this research claims to be of an "exploratory" nature, it may seems a bit paradoxical to study a network that has only gone mainstream for several days and remains by all accounts at a very early stage of development. A new form of scientific writing makes this initiative a bit more appropriate: the code notebook. 
 
-This is not a definite article but the translation of a work in progress. All the text is structured around "code blocks" in R that can be easily changed and easily challenged: altering one variable or one function may fully transform the dataset or a graph and generates new insight. 
+This is not a definite article but the translation of a work in progress. All the text is structured around "code blocks" in R that can be easily changed and easily challenged: altering one variable or one function may fully transform the dataset or a graph and generates new insight. The original code, data and rmd files are available on [Github](https://github.com/Dorialexander/MastodonCulturalGenesis) and can be run again (or tweaked, for that matter) on R studio. 
 
 This is a dynamic text (some words and figures are even generated "on the fly" by R code) which can deal with dynamic data. For the time being, I have only retrieved three days of the "public timeline" of Mastodon. Since most of the developments of the network lays in the future I have, at the time of this writing, no way to assess what will be its defining feature. I can still implement a reusable, general purpose programming structure that can give a glimpse of what is to come.
 
@@ -43,13 +53,13 @@ The public timeline do **not** register all the publications on Mastodon: every 
 
 Now there's a function in particular that made me fall in love with this API: "pace". A recurring problem I had when analyzing API data, is that it is necessary to severily restrain the rate of automatic extraction. While limiting the number of calls to the API to relieve the server is perfectly understandable, it frequently ends up in adding unnecessary seconds of "sleep" to the code (for instance, through time.sleep()). With pace, all the wait is optimized from both side: the server slows down whenever there is too much pressure and accelerates otherwise. It is not necessary to devise devious tactics in order to take the max out the API calls while avoiding getting ban.
 
-```{python}
+```{python eval = FALSE}
 mastodon = Mastodon(client_id = 'pytooter_clientcred.txt', ratelimit_method='pace')
 ```
 
 There's little to say about the two python scripts used to retrieve the data (mastodon_retrieve_API.py) and to put the more interesting pieces of information in a csv (mastodon_extract_json.py). The first script define a loop of 100 calls with a starting id (which has to be changed at the end of each run, by using the last id printed on the terminal, or the name of the last file in the corpus directory). It takes about five minutes to make the 100 calls --- even though that may change depending on "rate". Each calls retrieve 20 "toots" --- the Mastodon counterpart of tweets. I have also included a time.sleep of 10 seconds with an exception: from time to time a *general API error* pops up on the server side (which has become much less frequent with the 1.1.1 update).
 
-```{python}
+```{python eval = FALSE}
 for passing in range(0,100):
 	try:
 		print("getting the mastodon timeline json")
@@ -67,13 +77,13 @@ for passing in range(0,100):
 
 The second script extract and clean the json files in a somewhat ugly manneer --- that's not the code I'm the most proud of, but I was looking forward to the proper data analysis.
 
-Before that, just a small not on the issue of "personal data". While this is the *public* timeline of Mastodon and, with a little time, anyone can retrieve the similar information through the API, I'm still a little uncertain of what is the proper ethics way of dealing with social interactions of "real people" (all the more as concern for privacy is one of the leading concern of Mastodon). For the time being, the dataset available on this github directory only keeps the information actually used in this code notebook (which excludes the textual content of each toot) and have anonymized the personal name of each account.
+Before that, just a small caveat on the issue of "personal data". While this is the *public* timeline of Mastodon and, with a little time, anyone can retrieve the similar information through the API, I'm still a little uncertain of what is the proper ethics way of dealing with social interactions of "real people" (all the more as concern for privacy is one of the leading concern of Mastodon). For the time being, the dataset available on this github directory only keeps the information actually used in this code notebook (which excludes the textual content of each publication, the "toots"). I have also replaced the personal name of each account by their id: while the data is not anonyminized, it will be necessary to call the API once more to get any relevant personal information.
 
 ##First steps in R
 
 And, data analysis, here we come ! Unexpectedly, our first steps aims at loading a couple of libraries and cleaning a bit the csv file delivered by the python script.
 
-```{r message = FALSE, warning = FALSE}
+```{r eval = FALSE}
 library(tidyverse)
 library(lubridate)
 library(ggplot2)
@@ -262,6 +272,13 @@ The network visualization did not display an important piece of information: the
 So let's define a "sameness instance" variable that will count all the case where account_instance is the same as mention_instance.
 
 ```{r}
+sameness_instance <- mastodon_replies %>%
+  filter(account_name != mention_name) %>%
+  filter(account_instance == mention_instance) %>%
+  select(instance = account_instance) %>%
+  group_by(instance) %>%
+  summarise(same_instance = n())
+
 sameness_rate_instance <- mastodon_replies %>%
   filter(account_name != mention_name) %>%
   select(instance = account_instance) %>%
@@ -275,7 +292,7 @@ sameness_rate_instance <- mastodon_replies %>%
 sameness_rate_instance
 ```
 
-Even though the data "talks by itself", let's make it a bit more visually appealing with a plot:
+Globally the sameness rate is rather high, with a mean of `r round(mean(sameness_rate_instance$rate), 2)` for the ten main instances --- that is `r round(mean(sameness_rate_instance$rate), 0)`% of every notification sent is sent to a user of the same instance. As illustrated in the graph below, it tends to be more significant in networks where there is a higher level of community belonging (such as witches.town).
 
 ```{r}
 ggplot(sameness_rate_instance, aes(reorder(instance, -total_instance), rate, fill=instance)) +
@@ -284,8 +301,6 @@ ggplot(sameness_rate_instance, aes(reorder(instance, -total_instance), rate, fil
   theme(axis.text.x = element_text(size=7)) +
   labs(x="Instance", y="Notification share within an instance", fill="Instance", title="Measuring community belonging with mention shares", caption="Source : Public timeline of Mastodon")
 ```
-
-Among the networks that stands out witches.town and mamot.fr actually seems to have a strong sense of community belonging from the start. witches.town defines itself as "nice place on Mastodon for queer, feminists, anarchists and stuff as well as their sympathizers" and mamot.fr is the instance of an association, the *Quadrature du net* very well known among the French promoters of digital rights and freedoms.
 
 Of course the sameness rate is not inert and may evolve through time: whenever we'll have more data at our disposal we'll try to display theses dynamics.
 
