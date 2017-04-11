@@ -1,0 +1,292 @@
+---
+title: |
+  | Cultural Genesis at Mastodon (1/3)
+  | *Of instances and communities*
+author: "Pierre-Carl Langlais"
+date: '2017-04-11'
+output:
+  html_notebook: default
+  html_document: default
+---
+><div style="text-align: right">"*This allows places with different rules to coexist*" --- Eugen Rochko, [Learning from Twitter's Mistake](https://medium.com/@Gargron/learning-from-twitters-mistakes-c272d67bba76)</div>
+><div style="text-align: right">"*Folklore was self-generating*" --- China Melville, *Kraken*</div>
+
+[Mastodon](http://rmarkdown.rstudio.com) is the latest offspring of a complex and fascinating lineage of free and decentralized social networks. While Facebook, Google and Twitter attempted to build large commercial empire on the trading of social interaction, free software projects did not remain inactive: [GNU Social](https://gnu.io/social/), Identi.ca, Diaspora, Friendica.
+
+Mastodon was only a small newcomer to this connected galaxy of *counter-social networks*: it is actually based on a common standard defined Gnu Social, OStatus --- so that GNU Social accounts can communicate with Mastodon accounts. And the success story came, unsuspected and unprecedented: in less than a weeks, whole communities have shifted from Twitter to Mastodon.
+
+Mastodon is not a social network but, rather, a network of social networks. Anyone can set up and instance (even though that's technically challenging and costly), host the data of the people joining in and define specific rules (for instance regarding moderation) ; all the instances are linked into a "federation" (and continuously exchange texts and interaction). While this infrastructure designed by Eugen Rothko and a team of volunteer developers is not revolutionary *per se* it has been elegantly refined (with, for instance, a much friendlier interface than the vanilla Twitter and much more diverse privacy controls). 
+
+Mastodon claims to solve a wide array of structural shortcomings within social networks: a structural inability to define the proper balance between censorship and the dissemination of hate speech and harassement, a massive exploitation of private interactions, an interface more and more modelled around advertising returns… Consequently, noboby "owns" Mastodon as a whole (and has the ability to shift it to a commercial model) and each instance can set up their own code, that can meet the needs of specific people and communities.
+
+This promise is the starting point of my exploratory research. I hypothesize that Mastodon is 	intrinsically build to favor the gathering of communities. The technical design of instances immediately raises gouvernance issues (what has to be regulated? and how to regulate it?) which in turn favors the expression, if not the genesis of a specific "culture" --- made perceptible from the outside by the use of shared languages and references. This *cultural genesis* is tacitly [acknowledged](https://medium.com/@Gargron/learning-from-twitters-mistakes-c272d67bba76) by Mastodon's initiator, Eugen Rochko:
+
+>Different instances, owned by different entities, will have different rules and moderation policies. This gives the power to shape smaller, independent, yet integrated communities back to the people.
+
+And it is not a new process on the web. Large scale projects, such as Wikipedia or Debian, had a similar tendency to develop a strong "sense of community", merely from the necessity to cope with common problems and to solve them in common.
+
+Although this research claims to be of an "exploratory" nature, it may seems a bit paradoxical to study a network that has only gone mainstream for several days and remains by all accounts at a very early stage of development. A new form of scientific writing makes this initiative a bit more appropriate: the code notebook. 
+
+This is not a definite article but the translation of a work in progress. All the text is structured around "code blocks" in R that can be easily changed and easily challenged: altering one variable or one function may fully transform the dataset or a graph and generates new insight. 
+
+This is a dynamic text (some words and figures are even generated "on the fly" by R code) which can deal with dynamic data. For the time being, I have only retrieved three days of the "public timeline" of Mastodon. Since most of the developments of the network lays in the future I have, at the time of this writing, no way to assess what will be its defining feature. I can still implement a reusable, general purpose programming structure that can give a glimpse of what is to come.
+
+I'm likely to subdivide this research into three episodes (but even that can change). This first part mostly deals with the "interactions" within the networks (do the mentions reflect some preferences toward the user of a same instance?). The second part will look at the cultural genesis issue through the lenses of *text mining* (are the textual content of toots somewhat related accross an instance? to what extent does an instance *specialize* on some issues or thematics?). The final part is still fuzzy but will at least draw some broader analysis (by comparing Mastodon with precedents in other free web communities or contextualizing its part within the wider platform cooperativism moment).
+
+##A friendly API
+
+A key feature of Mastodon did not fully get the appraisal it deserves: the API. While being instrumental to the development of *Twitter Studies*, Twitter's API has become more and more convoluted, as the social network focused its economic development plan on the monetization of users' data. 
+
+In its current form, Mastodon is fully much more friendly to the casual text & data miner. Even though the social network is in its prime, there's already dedicated libraries to deal with the API in Ruby and Python. Since the [1.1.1 update](https://github.com/tootsuite/mastodon/releases/tag/v1.1.1), there is no need to login to access to the public timeline: everyone can set up an API key in a few seconds (that's the purpose of the create_mastodon_app.py script, to be run just once). 
+
+The public timeline do **not** register all the publications on Mastodon: every toot with privacy setting, every deleted toot and, likely, every instance not connected to mastodon.social do not show up. Based on the toot id, it seems that my corpora represents `r round(((nrow(mastodon)/(mastodon$toot_id[which.max(mastodon$toot_id)]-mastodon$toot_id[which.min(mastodon$toot_id)]))*100), 2)`% of all toots (as stated earlier that value is generated by R and can change depending on the available data). This is far from exhaustive but still enough to deduce some interesting dynamics.
+
+Now there's a function in particular that made me fall in love with this API: "pace". A recurring problem I had when analyzing API data, is that it is necessary to severily restrain the rate of automatic extraction. While limiting the number of calls to the API to relieve the server is perfectly understandable, it frequently ends up in adding unnecessary seconds of "sleep" to the code (for instance, through time.sleep()). With pace, all the wait is optimized from both side: the server slows down whenever there is too much pressure and accelerates otherwise. It is not necessary to devise devious tactics in order to take the max out the API calls while avoiding getting ban.
+
+```{python}
+mastodon = Mastodon(client_id = 'pytooter_clientcred.txt', ratelimit_method='pace')
+```
+
+There's little to say about the two python scripts used to retrieve the data (mastodon_retrieve_API.py) and to put the more interesting pieces of information in a csv (mastodon_extract_json.py). The first script define a loop of 100 calls with a starting id (which has to be changed at the end of each run, by using the last id printed on the terminal, or the name of the last file in the corpus directory). It takes about five minutes to make the 100 calls --- even though that may change depending on "rate". Each calls retrieve 20 "toots" --- the Mastodon counterpart of tweets. I have also included a time.sleep of 10 seconds with an exception: from time to time a *general API error* pops up on the server side (which has become much less frequent with the 1.1.1 update).
+
+```{python}
+for passing in range(0,100):
+	try:
+		print("getting the mastodon timeline json")
+		timeline_mastodon = mastodon.timeline_public(max_id = last_id)
+		json_mastodon = json.dumps(timeline_mastodon)
+		last_id = timeline_mastodon[len(timeline_mastodon)-1]["id"]
+		print("last stop at toot id " + str(last_id))
+		json_title = "mastodon_corpus/" + str(last_id) + ".json"
+		json_save_mastodon = open(json_title, 'w')
+		json_save_mastodon.write(json_mastodon)
+	except:
+		print("API error, waiting a bit to see what happens")
+		time.sleep(10)
+```
+
+The second script extract and clean the json files in a somewhat ugly manneer --- that's not the code I'm the most proud of, but I was looking forward to the proper data analysis.
+
+Before that, just a small not on the issue of "personal data". While this is the *public* timeline of Mastodon and, with a little time, anyone can retrieve the similar information through the API, I'm still a little uncertain of what is the proper ethics way of dealing with social interactions of "real people" (all the more as concern for privacy is one of the leading concern of Mastodon). For the time being, the dataset available on this github directory only keeps the information actually used in this code notebook (which excludes the textual content of each toot) and have anonymized the personal name of each account.
+
+##First steps in R
+
+And, data analysis, here we come ! Unexpectedly, our first steps aims at loading a couple of libraries and cleaning a bit the csv file delivered by the python script.
+
+```{r message = FALSE, warning = FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(stringr)
+mastodon <- tbl_df(read_csv2("mastodon_interactions.csv"))
+```
+*read_csv2* tries to "guess" the original format of the values (whether it is a character, an integer…). The process is efficient, but not full proof…
+
+For instance the two date values (publication of the toot, and creation of the Mastonaut account) are encoded as characters. Fortunately, they are also in a standard format: ymd_hms (from lubridate) can easily parse them. We also create a new column created_at_hour, that only keeps the hours for each day (and remove the minutes and seconds). And by the way we ensure that all the dates are registered *after* "2017-04-06 05:00:00" (there are some outliers, probably due to the "boost" of older toots).
+
+```{r message = FALSE, warning = FALSE}
+mastodon <- mastodon %>% 
+  mutate(created_at_hour = str_sub(created_at, 0, -12)) %>% 
+  mutate(created_at_hour = ymd_h(created_at_hour)) %>%
+  mutate(created_at = ymd_hms(created_at)) %>% 
+  filter(created_at > ymd_hms("2017-04-06 05:00:00"))
+```
+
+Next, we have to "separate" the instance chosen by the user from his name. The *@* provides an unambiguous way to split the strings and redefine two new columns: account_instance and account_name. Since we operate from a mastodon.social timeline, the mastodon.social instance is implied: we replace accordingly the non values generated on account_instance.
+
+```{r message = FALSE, warning = FALSE}
+mastodon <- mastodon %>% 
+  separate(account, c("account_name", "account_instance"), sep="@") %>% 
+  mutate(account_instance = ifelse(is.na(account_instance), "mastodon.social", account_instance))
+```
+
+A first look to our dataframe suggests that all seems in order :
+
+```{r}
+select(mastodon, toot_id, created_at, created_at_hour, account_name)
+```
+
+## An European-centered network <br> Insights from the day/night GMT contrast
+
+So we have a middle-sized data frame of `r nrow(mastodon)` toots that goes from `r mastodon$created_at[which.min(mastodon$created_at)]` to `r mastodon$created_at[which.max(mastodon$created_at)]` which is ready for some simple temporal dataviz. Thanks to our created_at_hour column we are able to display the evolution of the global participation on the public timeline during the period. The day/night contrast is noticeably strong. Since the time is expressed is GMT, the demography of the Mastonauts is likely centered on European countries. My personal experience relates to this hypothesis: so far the American accounts I follow on Twitter have not migrated yet…
+
+```{r}
+mastodon %>% 
+  filter(created_at_hour != created_at_hour[which.min(created_at_hour)]) %>%
+  filter(created_at_hour != created_at_hour[which.max(created_at_hour)]) %>%
+  group_by(created_at_hour) %>%
+  summarise(n_hour=n()) %>%
+  ggplot(aes(created_at_hour, n_hour)) + 
+  geom_line(color="red", size=1) +
+  ylim(0,1500) +
+  labs(x="Hour", y="Number of toots", title="Participation within all instances of Mastodon", caption="Source : Public timeline of mastodon.social")
+```
+
+Yet, Mastodon is not one big centralized network but a "fedaration" of individualized instances. Our variable main_instances get the name of the most active instances. Here I have selected the top 6 instances () minus *mastodon.social*. You can easily change theses settings by chosing a different threshold on top_n or removing the *filter(account_instance =! "mastodon.social") %>%* if you want to keep mastodon.social.
+
+```{r message = FALSE, warning = FALSE}
+main_instances <- mastodon %>%
+  group_by(account_instance) %>%
+  summarise(toots_instance = n()) %>%
+  filter(account_instance != "mastodon.social") %>%
+  top_n(6) %>%
+  arrange(desc(toots_instance))
+
+main_instances
+```
+
+Now our graph includes the following instances : `r paste(main_instances$account_instance, sep=", ")`. Even though the graph lines are rather intertwines with our default settings, the day/night contrast tends clearly to vary accross the instances. That may suggest that some instances are more "localized" or more "international" than others.
+
+```{r}
+mastodon %>%
+  filter(created_at_hour != created_at_hour[which.min(created_at_hour)]) %>%
+  filter(created_at_hour != created_at_hour[which.max(created_at_hour)]) %>%
+  filter(account_instance %in% main_instances$account_instance) %>%
+  group_by(created_at_hour, account_instance) %>% 
+  summarise(n_hour=n()) %>%
+  ggplot(aes(created_at_hour, n_hour, color=account_instance)) + 
+  geom_line(size=1) +
+  theme(legend.position="bottom") +
+  labs(x="Hour", y="Number of toots", color="Instance", title="Participation by instances", caption="Source : Public timeline of mastodon.social")
+```
+
+To have a quick idea of how much instances are affected by the GMT night-day shift, we can check the enthropy value. Time series decomposition would be more relevant but since we still have little data avaiable, a rough approximation of how much the tendency deviates from uniform distribution shall do the trick. The "do" function stated below is a precious addition to R that allows to apply any function to each group of data.
+
+```{r}
+library(entropy)
+
+mastodon_entropy <- mastodon %>%
+  filter(created_at_hour != created_at_hour[which.min(created_at_hour)]) %>%
+  filter(created_at_hour != created_at_hour[which.max(created_at_hour)]) %>%
+  filter(account_instance %in% main_instances$account_instance) %>%
+  group_by(created_at_hour, account_instance) %>% 
+  summarise(n_hour=n()) %>%
+  ungroup() %>%
+  group_by(account_instance) %>%
+  do(entropy_value = entropy(.$n_hour, method="MM")) %>%
+  unnest(entropy_value)
+
+ggplot(mastodon_entropy, aes(account_instance, entropy_value, size=1, color=account_instance)) + 
+  geom_point() +
+  ylim(3.9, 4.2) +
+  guides(size=FALSE, color=FALSE) +
+  labs(x="Instance", y="Entropy value", color="Instance", title="Entropy value accross the hours by instances", caption="Source : Public timeline of mastodon.social")
+```
+
+Here the two lowest value (that is that deviates the most from the uniform distribution) are attained by two instances created in Germany, icosahedron.web and social.tchncs.de, whereas mastodon.cloud and octodon.social (which claims to "federate everywhere") seems more likely to attract non-european users.
+
+## How do instances relates to each other? <br> A network of notifications.
+
+Now it's time for the tricky part: trying to map the network as… a network. As typical of any social network, toots are not isolated publications, but are "connected" through a wide array of interactions. And, less typically, theses interactions are part of wider interrelation between the "instances" and can help us to check their inner "community coherences": the less an instance is linked to other instances, the more likely it seems to be community-centric.
+
+The "mentions" are the most interesting data immediately available to get build a network model. Yet, they are not presented in a custom format, but as "lists". A quick inspection on our dataframe confirms that we have to deal with a comma-separated combination of an unknown number of accounts.
+
+```{r}
+library(stringr)
+mastodon %>%
+  select(toot_mentions_account) %>%
+  filter(str_detect(toot_mentions_account, ","))
+```
+Before we can get any further, we have to "unnest" our dataframe so that each row maps a specific mention (all the related metadata being consequently repeated). The id and the name of the accounts targeted by the mentions are "split" into a list (with strstplit) and the whole dataset is "unnested" according to the list of mentions. Then we "separate" the account and instances of each mentions (as we did on the names of the account earlier on). 
+
+```{r message = FALSE, warning = FALSE}
+mastodon_replies <- mastodon %>% 
+  select(toot_mentions_account, created_at, account_name, account_instance) %>% 
+  filter(toot_mentions_account != "None") %>% 
+  mutate(toot_mentions_account = strsplit(toot_mentions_account, ", ")) %>% 
+  unnest(toot_mentions_account)
+
+mastodon_replies <- mastodon_replies %>%
+  separate(toot_mentions_account, c("mention_name", "mention_instance"), sep="@") %>% 
+  mutate(mention_instance = ifelse(is.na(mention_instance), "mastodon.social", mention_instance))
+
+mastodon_replies
+```
+
+Everything is now maped around the "mention" unit : each row is a mention and when their is several mentions, the account name, instances, id, etc. are repeated accordingly.
+
+Since there is *a lot* of instances (`r nlevels(as.factor(mastodon_replies$account_instance))` on the account side), we only keeps the main one. Here our calculation is a bit more complicated than when we tried to define main_instances: we try to get the global count of instances on both side of the account-mention relationship, so that we have to merge account and mention instances into an unified "instance" variable. With a network visualisation a higher threshold is acceptable : we are settling for 20. "mastodon.social" is not filetered either, as it will be less overwhelming.
+
+```{r message = FALSE, warning = FALSE}
+main_reply_instances <- data_frame(c(mastodon_replies$account_instance, mastodon_replies$mention_instance)) %>%
+  setNames(., c("instance")) %>%
+  group_by(instance) %>%
+  summarise(account_mentions = n()) %>%
+  top_n(20) %>%
+  arrange(desc(account_mentions))
+
+main_reply_instances
+```
+
+Now we only keep in mastodon_replies the instances registered in main_reply_instances. Then we really get into the network business ! We load the igraph R (to sum it up quickly, let's say that's the R counterpart of Gephi) and we transform our data set into a graph of networked interaction.
+
+```{r message = FALSE, warning = FALSE}
+library(igraph)
+mastodon_network <- mastodon_replies %>%
+  filter(account_instance %in% main_reply_instances$instance) %>%
+  filter(mention_instance %in% main_reply_instances$instance) %>%
+  select(account_instance, mention_instance) %>%
+  graph_from_data_frame()
+
+mastodon_network
+```
+
+And a last round or (complicated) calculation. We try to simplify the network (by only removing the self interactions and removing the less interesting one). And since the network remains rather concentrated, we define the sides of the node on a logarithmic scale.
+
+```{r}
+E(mastodon_network)$weight <- 1
+mastodon_network <- simplify(mastodon_network, edge.attr.comb=list(weight = "sum", transaction_amount = "sum", function(x)length(x)))
+V(mastodon_network)$size <-  10*log10(degree(mastodon_network))
+
+plot(mastodon_network, edge.arrow.size=0.5, layout=layout.fruchterman.reingold, margin=-0.1)
+```
+
+While we clearly see that some instances are more "connected" than others, it is difficult to make out what happens within the core of the networks. Only one mention is enough to create a link between two instances. A good way to clarify theses relationships is to set a higher threshold for displaying a link. Here we have finally opted for a minimal weight of 4 but any other number can be set up to min_weight.
+
+```{r}
+min_weight = 4
+mastodon_network_2=delete.edges(mastodon_network, which(E(mastodon_network)$weight <=min_weight))
+mastodon_network_2 = delete_vertices(mastodon_network_2, "mastodon.social")
+isolates <- which(degree(mastodon_network_2, mode = "all") == 0)
+mastodon_network_2 <- delete.vertices(mastodon_network_2, isolates)
+E(mastodon_network_2)$color = rgb(1, .8, .8)
+plot(mastodon_network_2, edge.arrow.size=0.5, layout=layout.fruchterman.reingold, edge.width=E(mastodon_network_2)$weight)
+```
+
+The network seems to work in concentric circles, with more integrated instances communicating exclusively with more peripheral instances (such as the instance of the *Quadrature du net*, mamot.fr, with mastodon.gougere.fr). So far, the public timeline appears as the common forum of specific networks of instances --- a federation of smaller federations.
+
+## Instances = communities ?<br>Evaluating homogeneity through mentions
+
+The network visualization did not display an important piece of information: the share of "self-mentions" within an instance (it is actually possible to do so, but that would make the network much less legible). That is the fact that the users of mastodon.cloud or mamot.fr may refer more or less exclusively to users of their own instances rather than outside instances. This self-mention rate can be a significant measure, albeit approximative, of the degree of community belonging within an instance.
+
+So let's define a "sameness instance" variable that will count all the case where account_instance is the same as mention_instance.
+
+```{r}
+sameness_rate_instance <- mastodon_replies %>%
+  filter(account_name != mention_name) %>%
+  select(instance = account_instance) %>%
+  group_by(instance) %>%
+  summarise(total_instance = n()) %>%
+  merge(sameness_instance, by="instance") %>%
+  filter(!is.na(instance)) %>%
+  mutate(rate = (same_instance/total_instance)*100) %>%
+  top_n(10, total_instance)
+
+sameness_rate_instance
+```
+
+Even though the data "talks by itself", let's make it a bit more visually appealing with a plot:
+
+```{r}
+ggplot(sameness_rate_instance, aes(reorder(instance, -total_instance), rate, fill=instance)) +
+  geom_bar(stat = "identity") +
+  guides(fill=FALSE) +
+  theme(axis.text.x = element_text(size=7)) +
+  labs(x="Instance", y="Notification share within an instance", fill="Instance", title="Measuring community belonging with mention shares", caption="Source : Public timeline of Mastodon")
+```
+
+Among the networks that stands out witches.town and mamot.fr actually seems to have a strong sense of community belonging from the start. witches.town defines itself as "nice place on Mastodon for queer, feminists, anarchists and stuff as well as their sympathizers" and mamot.fr is the instance of an association, the *Quadrature du net* very well known among the French promoters of digital rights and freedoms.
+
+Of course the sameness rate is not inert and may evolve through time: whenever we'll have more data at our disposal we'll try to display theses dynamics.
+
+><div style="text-align: right">*To be continued*</div>
